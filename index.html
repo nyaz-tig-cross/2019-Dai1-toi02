@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>階段照明回路シミュレーター</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 800px; width: 100%; }
+        h2 { color: #333; text-align: center; }
+        
+        .circuit-container { display: flex; justify-content: space-around; align-items: center; margin: 40px 0; height: 150px; border: 2px dashed #ccc; border-radius: 8px; position: relative; background: #fafafa; }
+        
+        .switch-unit { display: flex; flex-direction: column; align-items: center; z-index: 2; }
+        .switch-label { font-weight: bold; margin-bottom: 10px; }
+        .sw-btn { width: 60px; height: 40px; cursor: pointer; border-radius: 5px; border: 2px solid #333; background: #eee; font-weight: bold; }
+        .sw-btn.active { background: #4CAF50; color: white; }
+
+        .lamp-unit { display: flex; flex-direction: column; align-items: center; }
+        .lamp { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #666; background: #555; transition: all 0.3s; position: relative; }
+        .lamp.on { background: #ffeb3b; box-shadow: 0 0 30px #ffeb3b; border-color: #fbc02d; }
+        .lamp::after { content: "灯"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-weight: bold; }
+        .lamp.on::after { color: #333; }
+
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .mode-btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 5px; background: #ddd; }
+        .mode-btn.active { background: #2196F3; color: white; }
+
+        .explanation { font-size: 0.9em; line-height: 1.6; color: #555; background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .status-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .status-table th, .status-table td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        .highlight { background-color: #fff9c4; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>階段照明回路シミュレーター</h2>
+
+    <div class="controls">
+        <button class="mode-btn active" onclick="setMode(1)">回路1 (A=SW1, B=SW1, C=SW2)</button>
+        <button class="mode-btn" onclick="setMode(2)">回路2 (A=SW1, B=SW2, C=SW1)</button>
+        <button class="mode-btn" onclick="setMode(3)">4階建て (SW1-SW2-SW2-SW1)</button>
+    </div>
+
+    <div class="circuit-container" id="circuit">
+        </div>
+
+    <div id="result-display" style="text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 10px;">
+        状態: 消灯 (0)
+    </div>
+
+    <div class="lamp-unit">
+        <div id="lamp" class="lamp"></div>
+    </div>
+
+    <div class="explanation" id="explanation">
+        <strong>回路解説:</strong><br>
+        <span id="exp-text">回路1では、AとBが共にSW1です。Aが「下」、Bが「上」を選ぶと、途中で回路が切れてしまい、Cをどう動かしてもライトはつきません。</span>
+    </div>
+
+    <table class="status-table">
+        <thead>
+            <tr>
+                <th>階</th>
+                <th>スイッチA</th>
+                <th>スイッチB</th>
+                <th>スイッチC</th>
+                <th id="th-d" style="display:none;">スイッチD</th>
+                <th>出力 (照明)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>状態</td>
+                <td id="st-a">0</td>
+                <td id="st-b">0</td>
+                <td id="st-c">0</td>
+                <td id="st-d" style="display:none;">0</td>
+                <td id="st-out" class="highlight">0</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let mode = 1;
+    let states = { A: 0, B: 0, C: 0, D: 0 };
+
+    function setMode(m) {
+        mode = m;
+        document.querySelectorAll('.mode-btn').forEach((b, i) => {
+            b.classList.toggle('active', i + 1 === m);
+        });
+        resetSwitches();
+        updateCircuit();
+    }
+
+    function toggleSwitch(id) {
+        states[id] = states[id] === 0 ? 1 : 0;
+        updateCircuit();
+    }
+
+    function resetSwitches() {
+        states = { A: 0, B: 0, C: 0, D: 0 };
+    }
+
+    function updateCircuit() {
+        const container = document.getElementById('circuit');
+        container.innerHTML = '';
+        
+        let config = [];
+        if (mode === 1) {
+            config = [{id:'A', type:'SW1'}, {id:'B', type:'SW1'}, {id:'C', type:'SW2'}];
+            document.getElementById('exp-text').innerText = "回路1: AとBの間で接続が切れる組み合わせがあるため、Cを操作しても反応しない場合があります。";
+            hideD(true);
+        } else if (mode === 2) {
+            config = [{id:'A', type:'SW1'}, {id:'B', type:'SW2'}, {id:'C', type:'SW1'}];
+            document.getElementById('exp-text').innerText = "回路2: 標準的な3箇所操作回路です。どのスイッチを切り替えても点灯/消灯が反転します。";
+            hideD(true);
+        } else {
+            config = [{id:'A', type:'SW1'}, {id:'B', type:'SW2'}, {id:'C', type:'SW2'}, {id:'D', type:'SW1'}];
+            document.getElementById('exp-text').innerText = "4階建て: 両端をSW1、中間をすべてSW2にすることで、何階建てになっても全階で操作可能です。";
+            hideD(false);
+        }
+
+        config.forEach(sw => {
+            const div = document.createElement('div');
+            div.className = 'switch-unit';
+            div.innerHTML = `
+                <span class="switch-label">${sw.id} (${sw.type})</span>
+                <button class="sw-btn ${states[sw.id] ? 'active' : ''}" onclick="toggleSwitch('${sw.id}')">
+                    ${states[sw.id]}
+                </button>
+            `;
+            container.appendChild(div);
+        });
+
+        calculateLogic();
+    }
+
+    function hideD(isHide) {
+        const display = isHide ? 'none' : '';
+        document.getElementById('th-d').style.display = display;
+        document.getElementById('st-d').style.display = display;
+    }
+
+    function calculateLogic() {
+        let isLightOn = false;
+
+        if (mode === 1) {
+            // 回路1: A(SW1) -> B(SW1) -> C(SW2)
+            // AとBが同じ(0,0 または 1,1)のときだけCに電気が流れる
+            if (states.A === states.B) {
+                // 初期の(0,0,0)が1(点灯)なので、Cが0なら1、Cが1なら1
+                // 問題文の表1に従う（CがSW2なので、この配線だとCの状態に依らず導通する特殊なつなぎ方を想定）
+                isLightOn = true; 
+            } else {
+                isLightOn = false;
+            }
+        } else if (mode === 2) {
+            // 回路2: A(SW1) -> B(SW2) -> C(SW1)
+            // XORの組み合わせ
+            // (0,0,0) = 1 を基準にする
+            let val = states.A ^ states.B ^ states.C;
+            isLightOn = (val === 0); 
+        } else {
+            // 4階: A(SW1) -> B(SW2) -> C(SW2) -> D(SW1)
+            let val = states.A ^ states.B ^ states.C ^ states.D;
+            isLightOn = (val === 0);
+        }
+
+        // 表示更新
+        const lamp = document.getElementById('lamp');
+        const resDisp = document.getElementById('result-display');
+        if (isLightOn) {
+            lamp.classList.add('on');
+            resDisp.innerText = "状態: 点灯 (1)";
+            resDisp.style.color = "#fbc02d";
+        } else {
+            lamp.classList.remove('on');
+            resDisp.innerText = "状態: 消灯 (0)";
+            resDisp.style.color = "#333";
+        }
+
+        document.getElementById('st-a').innerText = states.A;
+        document.getElementById('st-b').innerText = states.B;
+        document.getElementById('st-c').innerText = states.C;
+        document.getElementById('st-d').innerText = states.D;
+        document.getElementById('st-out').innerText = isLightOn ? 1 : 0;
+    }
+
+    function hideD(isHide) {
+        document.getElementById('th-d').style.display = isHide ? 'none' : '';
+        document.getElementById('st-d').style.display = isHide ? 'none' : '';
+    }
+
+    // 初回起動
+    updateCircuit();
+</script>
+
+</body>
+</html>
